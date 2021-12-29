@@ -8,7 +8,7 @@ terraform {
 }
 
 provider "aws" {
-  region  = "us-east-1"
+  region  = local.aws_region
   profile = var.aws_profile
 }
 
@@ -17,7 +17,8 @@ provider "cloudflare" {
 }
 
 locals {
-  inbound_email_lambda_name = "SesInbound"
+  aws_region = "us-east-1"
+
   inbound_email_bucket_name = var.domain_name
   inbound_email_table_name  = "InboundEmail"
 
@@ -37,114 +38,6 @@ locals {
 }
 
 data "aws_caller_identity" "current" {}
-
-resource "aws_iam_role" "lambda_ses_inbound" {
-  name = "SesInboundLambda"
-
-  assume_role_policy = <<POLICY
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "lambda.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-POLICY
-
-  managed_policy_arns = [aws_iam_policy.lambda_ses_inbound.arn]
-
-  tags = var.aws_tags
-}
-
-resource "aws_iam_policy" "lambda_ses_inbound" {
-  name = "LambdaSesInbound"
-
-  policy = <<POLICY
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "logs:CreateLogStream",
-                "logs:PutLogEvents"
-            ],
-            "Resource": [
-                "arn:aws:logs:us-east-1:${local.aws_account_id}:log-group:/aws/lambda/${local.inbound_email_lambda_name}:*"
-            ]
-        },
-        {
-            "Effect": "Allow",
-            "Action": "dynamodb:PutItem",
-            "Resource": "${aws_dynamodb_table.inbound_email.arn}"
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3-object-lambda:List*",
-                "s3-object-lambda:Get*"
-            ],
-            "Resource": "${aws_s3_bucket.primary_s3_bucket.arn}/*"
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:Get*",
-                "s3:List*"
-            ],
-            "Resource": "${aws_s3_bucket.primary_s3_bucket.arn}/*"
-        }
-    ]
-}
-POLICY
-
-  tags = var.aws_tags
-}
-
-data "archive_file" "lambda_ses_inbound" {
-  type        = "zip"
-  source_file = "../lambda_ses_inbound/main.py"
-  output_path = "${path.module}/lambda_ses_inbound.zip"
-}
-
-resource "aws_lambda_function" "ses_inbound" {
-  function_name    = local.inbound_email_lambda_name
-  role             = aws_iam_role.lambda_ses_inbound.arn
-  handler          = "main.lambda_handler"
-  runtime          = "python3.9"
-  filename         = data.archive_file.lambda_ses_inbound.output_path
-  source_code_hash = data.archive_file.lambda_ses_inbound.output_base64sha256
-  publish          = true
-  environment {
-    variables = {
-      INCOMING_EMAIL_BUCKET = local.inbound_email_bucket_name
-      INCOMING_EMAIL_TABLE  = local.inbound_email_table_name
-    }
-  }
-
-  tags = var.aws_tags
-}
-
-resource "aws_lambda_permission" "allow_ses" {
-  statement_id   = "GiveSESPermissionToInvokeFunction"
-  action         = "lambda:InvokeFunction"
-  function_name  = aws_lambda_function.ses_inbound.function_name
-  principal      = "ses.amazonaws.com"
-  source_arn     = "arn:aws:ses:us-east-1:${local.aws_account_id}:receipt-rule-set/inbound-email:receipt-rule/inbound-email"
-  source_account = local.aws_account_id
-}
-
-resource "aws_cloudwatch_log_group" "inbound_email_lambda" {
-  name              = "/aws/lambda/${local.inbound_email_lambda_name}"
-  retention_in_days = 90
-
-  tags = var.aws_tags
-}
 
 resource "aws_s3_bucket" "primary_s3_bucket" {
   bucket = local.inbound_email_bucket_name
@@ -226,6 +119,17 @@ resource "aws_dynamodb_table" "inbound_email" {
   tags = var.aws_tags
 }
 
+module "lambda_ses_inbound" {
+  source = "../lambda_ses_inbound/terraform"
+
+  aws_profile              = var.aws_profile
+  aws_region               = local.aws_region
+  inbound_email_table_arn  = aws_dynamodb_table.inbound_email.arn
+  inbound_email_table_name = aws_dynamodb_table.inbound_email.name
+  s3_bucket_arn            = aws_s3_bucket.primary_s3_bucket.arn
+  s3_bucket_name           = aws_s3_bucket.primary_s3_bucket.id
+}
+
 resource "aws_ses_domain_identity" "inbound_email" {
   domain = var.domain_name
 }
@@ -278,13 +182,13 @@ resource "aws_ses_receipt_rule" "inbound_email" {
   }
 
   lambda_action {
-    function_arn    = aws_lambda_function.ses_inbound.arn
+    function_arn    = module.lambda_ses_inbound.lambda_function_arn
     invocation_type = "RequestResponse"
     position        = 2
   }
 
   depends_on = [
-    aws_s3_bucket.primary_s3_bucket, aws_lambda_permission.allow_ses
+    aws_s3_bucket.primary_s3_bucket
   ]
 }
 
@@ -443,8 +347,8 @@ resource "aws_apigatewayv2_api" "api" {
 }
 
 resource "aws_apigatewayv2_stage" "api_production" {
-  api_id = aws_apigatewayv2_api.api.id
-  name   = "production"
+  api_id        = aws_apigatewayv2_api.api.id
+  name          = "production"
   deployment_id = aws_apigatewayv2_deployment.api.id
 }
 
@@ -457,7 +361,7 @@ resource "aws_apigatewayv2_domain_name" "api" {
     security_policy = "TLS_1_2"
   }
 
-  depends_on = [cloudflare_record.api_validation]
+  depends_on = [aws_acm_certificate_validation.api_certificate_validation]
 }
 
 resource "aws_apigatewayv2_api_mapping" "api" {
