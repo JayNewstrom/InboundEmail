@@ -2,5 +2,3 @@
 /*.tfstate
 /*.tfstate.backup
 /.terraform
-/lambda_ses_inbound.zip
-/lambda_list_emails.zip

@@ -19,14 +19,9 @@ provider "cloudflare" {
 locals {
   aws_region = "us-east-1"
 
-  inbound_email_bucket_name = var.domain_name
-  inbound_email_table_name  = "InboundEmail"
-
-  list_emails_lambda_name = "ListEmails"
+  inbound_email_table_name = "InboundEmail"
 
   api_domain_name = "api.${var.domain_name}"
-
-  aws_account_id = data.aws_caller_identity.current.account_id
 
   api_validation_domains = distinct(
   [
@@ -35,53 +30,6 @@ locals {
   )
   ]
   )
-}
-
-data "aws_caller_identity" "current" {}
-
-resource "aws_s3_bucket" "primary_s3_bucket" {
-  bucket = local.inbound_email_bucket_name
-  acl    = "private"
-  policy = <<POLICY
-  {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "AllowSESPuts",
-            "Effect": "Allow",
-            "Principal": {
-                "Service": "ses.amazonaws.com"
-            },
-            "Action": "s3:PutObject",
-            "Resource": "arn:aws:s3:::${local.inbound_email_bucket_name}/*",
-            "Condition": {
-                "StringEquals": {
-                    "AWS:SourceAccount": "${local.aws_account_id}"
-                }
-            }
-        }
-    ]
-}
-POLICY
-
-  tags = var.aws_tags
-
-  server_side_encryption_configuration {
-    rule {
-      apply_server_side_encryption_by_default {
-        sse_algorithm = "AES256"
-      }
-    }
-  }
-}
-
-resource "aws_s3_bucket_public_access_block" "bucket" {
-  bucket = aws_s3_bucket.primary_s3_bucket.id
-
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
 }
 
 resource "aws_dynamodb_table" "inbound_email" {
@@ -119,6 +67,14 @@ resource "aws_dynamodb_table" "inbound_email" {
   tags = var.aws_tags
 }
 
+module "inbound_email_s3" {
+  source = "../inbound_email_s3"
+
+  aws_profile = var.aws_profile
+  aws_region  = local.aws_region
+  bucket_name = var.domain_name
+}
+
 module "lambda_ses_inbound" {
   source = "../lambda_ses_inbound/terraform"
 
@@ -126,171 +82,37 @@ module "lambda_ses_inbound" {
   aws_region               = local.aws_region
   inbound_email_table_arn  = aws_dynamodb_table.inbound_email.arn
   inbound_email_table_name = aws_dynamodb_table.inbound_email.name
-  s3_bucket_arn            = aws_s3_bucket.primary_s3_bucket.arn
-  s3_bucket_name           = aws_s3_bucket.primary_s3_bucket.id
+  s3_bucket_arn            = module.inbound_email_s3.bucket_arn
+  s3_bucket_name           = module.inbound_email_s3.bucket_name
 }
 
-resource "aws_ses_domain_identity" "inbound_email" {
-  domain = var.domain_name
+module "ses" {
+  source = "../ses"
+
+  aws_profile          = var.aws_profile
+  aws_region           = local.aws_region
+  bucket_name          = module.inbound_email_s3.bucket_name
+  cloudflare_api_token = var.cloudflare_api_token
+  cloudflare_zone      = var.cloudflare_zone
+
+  dns_mx_allow_overwrite_records         = var.dns_mx_allow_overwrite_records
+  dns_mx_ttl                             = var.dns_mx_ttl
+  dns_validation_allow_overwrite_records = var.dns_validation_allow_overwrite_records
+  dns_validation_ttl                     = var.dns_validation_ttl
+
+  domain_name         = var.domain_name
+  lambda_function_arn = module.lambda_ses_inbound.lambda_function_arn
+  mx_priority         = 10
 }
 
-resource "aws_ses_domain_dkim" "inbound_email" {
-  domain = aws_ses_domain_identity.inbound_email.domain
-}
+module "lambda_list_emails" {
+  source = "../lambda_list_emails/terraform"
 
-resource "cloudflare_record" "ses_validation" {
-  count = 3
-
-  zone_id = var.cloudflare_zone
-  name    = "${element(aws_ses_domain_dkim.inbound_email.dkim_tokens, count.index)}._domainkey.${var.domain_name}"
-  type    = "CNAME"
-  value   = "${element(aws_ses_domain_dkim.inbound_email.dkim_tokens, count.index)}.dkim.amazonses.com"
-  ttl     = var.dns_validation_ttl
-  proxied = false
-
-  allow_overwrite = var.dns_validation_allow_overwrite_records
-
-  depends_on = [aws_ses_domain_dkim.inbound_email]
-}
-
-resource "cloudflare_record" "mx" {
-  zone_id  = var.cloudflare_zone
-  name     = var.domain_name
-  type     = "MX"
-  value    = "inbound-smtp.us-east-1.amazonaws.com"
-  ttl      = var.dns_mx_ttl
-  priority = 10
-  proxied  = false
-
-  allow_overwrite = var.dns_mx_allow_overwrite_records
-}
-
-resource "aws_ses_receipt_rule_set" "inbound_email" {
-  rule_set_name = "inbound-email"
-}
-
-resource "aws_ses_receipt_rule" "inbound_email" {
-  name          = "inbound-email"
-  rule_set_name = "inbound-email"
-  recipients    = []
-  enabled       = true
-  scan_enabled  = true
-
-  s3_action {
-    bucket_name = local.inbound_email_bucket_name
-    position    = 1
-  }
-
-  lambda_action {
-    function_arn    = module.lambda_ses_inbound.lambda_function_arn
-    invocation_type = "RequestResponse"
-    position        = 2
-  }
-
-  depends_on = [
-    aws_s3_bucket.primary_s3_bucket
-  ]
-}
-
-resource "aws_ses_active_receipt_rule_set" "inbound_email" {
-  rule_set_name = "inbound-email"
-
-  depends_on = [aws_ses_receipt_rule_set.inbound_email]
-}
-
-resource "aws_iam_role" "lambda_list_emails" {
-  name = "ListEmailsLambda"
-
-  assume_role_policy = <<POLICY
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "lambda.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-POLICY
-
-  managed_policy_arns = [aws_iam_policy.lambda_list_emails.arn]
-
-  tags = var.aws_tags
-}
-
-resource "aws_iam_policy" "lambda_list_emails" {
-  name = "LambdaListEmails"
-
-  policy = <<POLICY
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "logs:CreateLogStream",
-                "logs:PutLogEvents"
-            ],
-            "Resource": [
-                "arn:aws:logs:us-east-1:${local.aws_account_id}:log-group:/aws/lambda/${local.list_emails_lambda_name}:*"
-            ]
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "dynamodb:Scan"
-            ],
-            "Resource": "${aws_dynamodb_table.inbound_email.arn}"
-        }
-    ]
-}
-POLICY
-
-  tags = var.aws_tags
-}
-
-data "archive_file" "lambda_list_emails" {
-  type        = "zip"
-  source_file = "../lambda_list_emails/main.py"
-  output_path = "${path.module}/lambda_list_emails.zip"
-}
-
-resource "aws_lambda_function" "list_emails" {
-  function_name    = local.list_emails_lambda_name
-  role             = aws_iam_role.lambda_list_emails.arn
-  handler          = "main.lambda_handler"
-  runtime          = "python3.9"
-  filename         = data.archive_file.lambda_list_emails.output_path
-  source_code_hash = data.archive_file.lambda_list_emails.output_base64sha256
-  publish          = true
-  memory_size      = 512
-
-  environment {
-    variables = {
-      INCOMING_EMAIL_TABLE = local.inbound_email_table_name
-    }
-  }
-
-  tags = var.aws_tags
-}
-
-resource "aws_lambda_permission" "allow_api_gateway_to_list_emails" {
-  statement_id   = "GiveApiGatewayPermissionToInvokeFunction"
-  action         = "lambda:InvokeFunction"
-  function_name  = aws_lambda_function.list_emails.function_name
-  principal      = "apigateway.amazonaws.com"
-  source_account = local.aws_account_id
-  source_arn     = "${aws_apigatewayv2_api.api.execution_arn}/*/*/*"
-}
-
-resource "aws_cloudwatch_log_group" "list_emails_lambda" {
-  name              = "/aws/lambda/${local.list_emails_lambda_name}"
-  retention_in_days = 90
-
-  tags = var.aws_tags
+  aws_api_gateway_execution_arn = aws_apigatewayv2_api.api.execution_arn
+  aws_profile                   = var.aws_profile
+  aws_region                    = local.aws_region
+  inbound_email_table_arn       = aws_dynamodb_table.inbound_email.arn
+  inbound_email_table_name      = aws_dynamodb_table.inbound_email.name
 }
 
 resource "cloudflare_record" "api_validation" {
@@ -389,7 +211,7 @@ resource "aws_apigatewayv2_integration" "api_list_emails" {
   api_id             = aws_apigatewayv2_api.api.id
   integration_type   = "AWS_PROXY"
   integration_method = "POST"
-  integration_uri    = aws_lambda_function.list_emails.invoke_arn
+  integration_uri    = module.lambda_list_emails.lambda_invoke_arn
 }
 
 resource "aws_apigatewayv2_route" "api_list_emails" {
