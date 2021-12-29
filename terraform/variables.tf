@@ -11,12 +11,6 @@ variable "aws_profile" {
   default = ""
 }
 
-variable "aws_tags" {
-  type        = map(string)
-  default     = {}
-  description = "tags for all the resources, if any"
-}
-
 variable "dns_ttl" {
   default = 1 // 1 is automatic.
 }

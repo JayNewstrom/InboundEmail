@@ -18,22 +18,10 @@ provider "cloudflare" {
 
 locals {
   aws_region = "us-east-1"
-
-  inbound_email_table_name = "InboundEmail"
-
-  api_domain_name = "api.${var.domain_name}"
-
-  api_validation_domains = distinct(
-  [
-  for k, v in aws_acm_certificate.api_certificate[0].domain_validation_options : merge(
-  tomap(v), { domain_name = replace(v.domain_name, "*.", "") }
-  )
-  ]
-  )
 }
 
 resource "aws_dynamodb_table" "inbound_email" {
-  name         = local.inbound_email_table_name
+  name         = "InboundEmail"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "emailAddress"
   range_key    = "receivedAt"
@@ -63,8 +51,6 @@ resource "aws_dynamodb_table" "inbound_email" {
   server_side_encryption {
     enabled = true
   }
-
-  tags = var.aws_tags
 }
 
 module "inbound_email_s3" {
@@ -108,115 +94,26 @@ module "ses" {
 module "lambda_list_emails" {
   source = "../lambda_list_emails/terraform"
 
-  aws_api_gateway_execution_arn = aws_apigatewayv2_api.api.execution_arn
+  aws_api_gateway_execution_arn = module.api_gateway.api_execution_arn
   aws_profile                   = var.aws_profile
   aws_region                    = local.aws_region
   inbound_email_table_arn       = aws_dynamodb_table.inbound_email.arn
   inbound_email_table_name      = aws_dynamodb_table.inbound_email.name
 }
 
-resource "cloudflare_record" "api_validation" {
-  count = 1
+module "api_gateway" {
+  source = "../api_gateway"
 
-  zone_id = var.cloudflare_zone
-  name    = element(local.api_validation_domains, count.index)["resource_record_name"]
-  type    = element(local.api_validation_domains, count.index)["resource_record_type"]
-  value   = replace(element(local.api_validation_domains, count.index)["resource_record_value"], "/.$/", "")
-  ttl     = var.dns_validation_ttl
-  proxied = false
+  aws_profile = var.aws_profile
+  aws_region  = local.aws_region
 
-  allow_overwrite = var.dns_validation_allow_overwrite_records
+  domain_name = "${local.aws_region}.api.${var.domain_name}"
 
-  depends_on = [aws_acm_certificate.api_certificate]
-}
+  lambda_list_emails_invoke_arn = module.lambda_list_emails.lambda_invoke_arn
 
-resource "aws_acm_certificate" "api_certificate" {
-  count             = 1
-  domain_name       = local.api_domain_name
-  validation_method = "DNS"
-
-  options {
-    certificate_transparency_logging_preference = "ENABLED"
-  }
-
-  tags = var.aws_tags
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "aws_acm_certificate_validation" "api_certificate_validation" {
-  certificate_arn = aws_acm_certificate.api_certificate[0].arn
-
-  validation_record_fqdns = cloudflare_record.api_validation.*.hostname
-}
-
-resource "cloudflare_record" "api" {
-  zone_id = var.cloudflare_zone
-  name    = aws_apigatewayv2_domain_name.api.domain_name
-  type    = "CNAME"
-  value   = aws_apigatewayv2_domain_name.api.domain_name_configuration[0].target_domain_name
-  ttl     = var.dns_ttl
-  proxied = false
-
-  allow_overwrite = var.dns_validation_allow_overwrite_records
-}
-
-resource "aws_apigatewayv2_api" "api" {
-  name          = "api"
-  protocol_type = "HTTP"
-}
-
-resource "aws_apigatewayv2_stage" "api_production" {
-  api_id        = aws_apigatewayv2_api.api.id
-  name          = "production"
-  deployment_id = aws_apigatewayv2_deployment.api.id
-}
-
-resource "aws_apigatewayv2_domain_name" "api" {
-  domain_name = local.api_domain_name
-
-  domain_name_configuration {
-    certificate_arn = aws_acm_certificate.api_certificate[0].arn
-    endpoint_type   = "REGIONAL"
-    security_policy = "TLS_1_2"
-  }
-
-  depends_on = [aws_acm_certificate_validation.api_certificate_validation]
-}
-
-resource "aws_apigatewayv2_api_mapping" "api" {
-  api_id      = aws_apigatewayv2_api.api.id
-  domain_name = aws_apigatewayv2_domain_name.api.id
-  stage       = aws_apigatewayv2_stage.api_production.id
-}
-
-resource "aws_apigatewayv2_deployment" "api" {
-  api_id = aws_apigatewayv2_api.api.id
-
-  triggers = {
-    redeployment = sha1(join(",", tolist([
-      jsonencode(aws_apigatewayv2_integration.api_list_emails),
-      jsonencode(aws_apigatewayv2_route.api_list_emails),
-    ])))
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "aws_apigatewayv2_integration" "api_list_emails" {
-  api_id             = aws_apigatewayv2_api.api.id
-  integration_type   = "AWS_PROXY"
-  integration_method = "POST"
-  integration_uri    = module.lambda_list_emails.lambda_invoke_arn
-}
-
-resource "aws_apigatewayv2_route" "api_list_emails" {
-  api_id    = aws_apigatewayv2_api.api.id
-  route_key = "GET /emails"
-
-  target = "integrations/${aws_apigatewayv2_integration.api_list_emails.id}"
+  cloudflare_api_token                   = var.cloudflare_api_token
+  cloudflare_zone                        = var.cloudflare_zone
+  dns_ttl                                = var.dns_ttl
+  dns_validation_allow_overwrite_records = var.dns_validation_allow_overwrite_records
+  dns_validation_ttl                     = var.dns_validation_ttl
 }
