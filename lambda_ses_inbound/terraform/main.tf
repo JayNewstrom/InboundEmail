@@ -11,7 +11,7 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 
 resource "aws_iam_role" "lambda_ses_inbound" {
-  name = "SesInboundLambda"
+  name = "SesInboundLambda-${var.aws_region}"
 
   assume_role_policy = <<POLICY
 {
@@ -32,7 +32,7 @@ POLICY
 }
 
 resource "aws_iam_policy" "lambda_ses_inbound" {
-  name = "LambdaSesInbound"
+  name = "LambdaSesInbound-${var.aws_region}"
 
   policy = <<POLICY
 {

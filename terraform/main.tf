@@ -1,30 +1,14 @@
-terraform {
-  required_providers {
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "~> 3.0"
-    }
-  }
-}
-
 provider "aws" {
-  region  = local.aws_region
+  region  = "us-east-1"
   profile = var.aws_profile
 }
 
-provider "cloudflare" {
-  api_token = var.cloudflare_api_token
-}
-
-locals {
-  aws_region = "us-east-1"
-}
-
 resource "aws_dynamodb_table" "inbound_email" {
-  name         = "InboundEmail"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "emailAddress"
-  range_key    = "receivedAt"
+  name           = "InboundEmail"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "emailAddress"
+  range_key      = "receivedAt"
+  stream_enabled = true
 
   attribute {
     name = "emailAddress"
@@ -48,72 +32,47 @@ resource "aws_dynamodb_table" "inbound_email" {
     projection_type = "ALL"
   }
 
+  replica {
+    region_name = "us-west-2"
+  }
+
   server_side_encryption {
     enabled = true
   }
 }
 
-module "inbound_email_s3" {
-  source = "../inbound_email_s3"
+module "region_us_east_1" {
+  source = "../region"
 
-  aws_profile = var.aws_profile
-  aws_region  = local.aws_region
-  bucket_name = var.domain_name
-}
+  aws_region = "us-east-1"
 
-module "lambda_ses_inbound" {
-  source = "../lambda_ses_inbound/terraform"
-
-  aws_profile              = var.aws_profile
-  aws_region               = local.aws_region
-  inbound_email_table_arn  = aws_dynamodb_table.inbound_email.arn
-  inbound_email_table_name = aws_dynamodb_table.inbound_email.name
-  s3_bucket_arn            = module.inbound_email_s3.bucket_arn
-  s3_bucket_name           = module.inbound_email_s3.bucket_name
-}
-
-module "ses" {
-  source = "../ses"
-
-  aws_profile          = var.aws_profile
-  aws_region           = local.aws_region
-  bucket_name          = module.inbound_email_s3.bucket_name
-  cloudflare_api_token = var.cloudflare_api_token
-  cloudflare_zone      = var.cloudflare_zone
-
-  dns_mx_allow_overwrite_records         = var.dns_mx_allow_overwrite_records
-  dns_mx_ttl                             = var.dns_mx_ttl
-  dns_validation_allow_overwrite_records = var.dns_validation_allow_overwrite_records
-  dns_validation_ttl                     = var.dns_validation_ttl
-
-  domain_name         = var.domain_name
-  lambda_function_arn = module.lambda_ses_inbound.lambda_function_arn
-  mx_priority         = 10
-}
-
-module "lambda_list_emails" {
-  source = "../lambda_list_emails/terraform"
-
-  aws_api_gateway_execution_arn = module.api_gateway.api_execution_arn
-  aws_profile                   = var.aws_profile
-  aws_region                    = local.aws_region
-  inbound_email_table_arn       = aws_dynamodb_table.inbound_email.arn
-  inbound_email_table_name      = aws_dynamodb_table.inbound_email.name
-}
-
-module "api_gateway" {
-  source = "../api_gateway"
-
-  aws_profile = var.aws_profile
-  aws_region  = local.aws_region
-
-  domain_name = "${local.aws_region}.api.${var.domain_name}"
-
-  lambda_list_emails_invoke_arn = module.lambda_list_emails.lambda_invoke_arn
-
+  aws_profile                            = var.aws_profile
   cloudflare_api_token                   = var.cloudflare_api_token
   cloudflare_zone                        = var.cloudflare_zone
+  dns_mx_allow_overwrite_records         = var.dns_mx_allow_overwrite_records
+  dns_mx_ttl                             = var.dns_mx_ttl
   dns_ttl                                = var.dns_ttl
   dns_validation_allow_overwrite_records = var.dns_validation_allow_overwrite_records
   dns_validation_ttl                     = var.dns_validation_ttl
+  domain_name                            = var.domain_name
+  inbound_email_table_name               = aws_dynamodb_table.inbound_email.name
+  mx_priority                            = 10
+}
+
+module "region_us_west_2" {
+  source = "../region"
+
+  aws_region = "us-west-2"
+
+  aws_profile                            = var.aws_profile
+  cloudflare_api_token                   = var.cloudflare_api_token
+  cloudflare_zone                        = var.cloudflare_zone
+  dns_mx_allow_overwrite_records         = var.dns_mx_allow_overwrite_records
+  dns_mx_ttl                             = var.dns_mx_ttl
+  dns_ttl                                = var.dns_ttl
+  dns_validation_allow_overwrite_records = var.dns_validation_allow_overwrite_records
+  dns_validation_ttl                     = var.dns_validation_ttl
+  domain_name                            = var.domain_name
+  inbound_email_table_name               = aws_dynamodb_table.inbound_email.name
+  mx_priority                            = 20
 }
