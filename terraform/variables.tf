@@ -17,6 +17,10 @@ variable "aws_tags" {
   description = "tags for all the resources, if any"
 }
 
+variable "dns_ttl" {
+  default = 1 // 1 is automatic.
+}
+
 variable "dns_validation_ttl" {
   default = 120
 }

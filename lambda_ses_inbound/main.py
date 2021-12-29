@@ -12,6 +12,7 @@ table = dynamodb.Table(os.getenv('INCOMING_EMAIL_TABLE'))
 def lambda_handler(event, context):
     ses_notification = event['Records'][0]['ses']
     recipients_array = ses_notification['receipt']['recipients']
+    from_array = ses_notification['mail']['commonHeaders']['from']
     subject = ses_notification['mail']['commonHeaders']['subject']
     message_id = ses_notification['mail']['messageId']
 
@@ -32,6 +33,7 @@ def lambda_handler(event, context):
         Item={
             'messageId': message_id,
             'emailAddress': recipients_array[0],
+            'fromEmailAddress': from_array[0],
             'receivedAt': datetime.utcnow().isoformat(),
             'subject': subject,
             'body': body,
