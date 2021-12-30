@@ -33,3 +33,6 @@ variable "inbound_email_table_name" {
 
 variable "mx_priority" {
 }
+
+variable "front_end_aws_cloudfront_origin_access_identity_iam_arn" {
+}

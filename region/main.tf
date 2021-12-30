@@ -4,7 +4,7 @@ provider "aws" {
 }
 
 locals {
-  aws_account_id = data.aws_caller_identity.current.account_id
+  aws_account_id          = data.aws_caller_identity.current.account_id
   inbound_email_table_arn = "arn:aws:dynamodb:${var.aws_region}:${local.aws_account_id}:table/${var.inbound_email_table_name}"
 }
 
@@ -73,4 +73,14 @@ module "api_gateway" {
   dns_ttl                                = var.dns_ttl
   dns_validation_allow_overwrite_records = var.dns_validation_allow_overwrite_records
   dns_validation_ttl                     = var.dns_validation_ttl
+}
+
+module "front_end_s3" {
+  source = "../front_end_s3"
+
+  aws_cloudfront_origin_access_identity_iam_arn = var.front_end_aws_cloudfront_origin_access_identity_iam_arn
+
+  aws_profile = var.aws_profile
+  aws_region  = var.aws_region
+  bucket_name = "front-end.${var.domain_name}.${var.aws_region}"
 }

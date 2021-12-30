@@ -7,3 +7,6 @@ output "api_url" {
 output "api_stage_path" {
   value = module.api_gateway.stage_path
 }
+output "front_end_bucket_url" {
+  value = module.front_end_s3.bucket_url
+}

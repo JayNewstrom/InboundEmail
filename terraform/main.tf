@@ -4,11 +4,11 @@ provider "aws" {
 }
 
 resource "aws_dynamodb_table" "inbound_email" {
-  name           = "InboundEmail"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "emailAddress"
-  range_key      = "receivedAt"
-  stream_enabled = true
+  name             = "InboundEmail"
+  billing_mode     = "PAY_PER_REQUEST"
+  hash_key         = "emailAddress"
+  range_key        = "receivedAt"
+  stream_enabled   = true
   stream_view_type = "NEW_AND_OLD_IMAGES"
 
   attribute {
@@ -45,7 +45,8 @@ resource "aws_dynamodb_table" "inbound_email" {
 module "region_us_east_1" {
   source = "../region"
 
-  aws_region = "us-east-1"
+  aws_region  = "us-east-1"
+  mx_priority = 10
 
   aws_profile                            = var.aws_profile
   cloudflare_api_token                   = var.cloudflare_api_token
@@ -57,13 +58,15 @@ module "region_us_east_1" {
   dns_validation_ttl                     = var.dns_validation_ttl
   domain_name                            = var.domain_name
   inbound_email_table_name               = aws_dynamodb_table.inbound_email.name
-  mx_priority                            = 10
+
+  front_end_aws_cloudfront_origin_access_identity_iam_arn = module.front_end_cloudfront.aws_cloudfront_origin_access_identity_iam_arn
 }
 
 module "region_us_west_2" {
   source = "../region"
 
-  aws_region = "us-west-2"
+  aws_region  = "us-west-2"
+  mx_priority = 20
 
   aws_profile                            = var.aws_profile
   cloudflare_api_token                   = var.cloudflare_api_token
@@ -75,7 +78,8 @@ module "region_us_west_2" {
   dns_validation_ttl                     = var.dns_validation_ttl
   domain_name                            = var.domain_name
   inbound_email_table_name               = aws_dynamodb_table.inbound_email.name
-  mx_priority                            = 20
+
+  front_end_aws_cloudfront_origin_access_identity_iam_arn = module.front_end_cloudfront.aws_cloudfront_origin_access_identity_iam_arn
 }
 
 module "api_cloudfront" {
@@ -100,6 +104,31 @@ module "api_cloudfront" {
       url  = module.region_us_west_2.api_url
       name = "api-us-west-2",
       path = module.region_us_west_2.api_stage_path
+    }
+  ]
+}
+
+module "front_end_cloudfront" {
+  source = "../front_end_cloudfront"
+
+  aws_profile                            = var.aws_profile
+  cloudflare_api_token                   = var.cloudflare_api_token
+  cloudflare_zone                        = var.cloudflare_zone
+  cloudfront_price_class                 = var.cloudfront_price_class
+  dns_allow_overwrite_records            = var.dns_allow_overwrite_records
+  dns_ttl                                = var.dns_ttl
+  dns_validation_allow_overwrite_records = var.dns_validation_allow_overwrite_records
+  dns_validation_ttl                     = var.dns_validation_ttl
+  domain_name                            = var.domain_name
+
+  upstream_s3_buckets = [
+    {
+      url  = module.region_us_east_1.front_end_bucket_url,
+      name = "s3-us-east-1"
+    },
+    {
+      url  = module.region_us_west_2.front_end_bucket_url,
+      name = "s3-us-west-2"
     }
   ]
 }
