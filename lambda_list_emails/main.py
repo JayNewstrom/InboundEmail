@@ -21,11 +21,11 @@ def lambda_handler(event, context):
         done = start_key is None
 
     return {
-        "statusCode": 200,
-        "headers": {
-            "Content-Type": "application/json"
+        'statusCode': 200,
+        'headers': {
+            'Content-Type': 'application/json',
         },
-        "body": json.dumps({
-            "emails ": result
+        'body': json.dumps({
+            'emails': result
         })
     }

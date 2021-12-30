@@ -68,6 +68,7 @@ resource "aws_cloudfront_distribution" "api" {
     allowed_methods = [
       "GET",
       "HEAD",
+      "OPTIONS",
     ]
 
     cached_methods = [
@@ -77,21 +78,13 @@ resource "aws_cloudfront_distribution" "api" {
 
     target_origin_id = "api"
 
-    forwarded_values {
-      query_string = true
-      headers      = ["Origin"]
-
-      cookies {
-        forward = "all"
-      }
-    }
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.api.id
+    cache_policy_id = aws_cloudfront_cache_policy.api.id
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
 
     compress = true
 
     viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 0
-    max_ttl                = 31536000
   }
 
   price_class = var.cloudfront_price_class
@@ -116,6 +109,76 @@ resource "aws_cloudfront_distribution" "api" {
   }
 
   wait_for_deployment = false
+}
+
+resource "aws_cloudfront_origin_request_policy" "api" {
+  name = "api-policy"
+
+  cookies_config {
+    cookie_behavior = "all"
+  }
+  headers_config {
+    header_behavior = "whitelist"
+    headers {
+      items = ["Origin"]
+    }
+  }
+  query_strings_config {
+    query_string_behavior = "all"
+  }
+}
+
+resource "aws_cloudfront_cache_policy" "api" {
+  name        = "api-policy"
+  default_ttl = 0
+  max_ttl     = 100
+  min_ttl     = 0
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    cookies_config {
+      cookie_behavior = "none"
+    }
+    headers_config {
+      header_behavior = "none"
+    }
+    query_strings_config {
+      query_string_behavior = "none"
+    }
+  }
+}
+
+resource "aws_cloudfront_response_headers_policy" "api" {
+  name = "api-policy"
+
+  cors_config {
+    access_control_allow_credentials = false
+
+    access_control_allow_headers {
+      items = ["*"]
+    }
+
+    access_control_expose_headers {
+      items = ["*"]
+    }
+
+    access_control_allow_methods {
+      items = [
+        "GET",
+        "HEAD",
+        "PUT",
+        "POST",
+        "PATCH",
+        "DELETE",
+        "OPTIONS",
+      ]
+    }
+
+    access_control_allow_origins {
+      items = ["*"]
+    }
+
+    origin_override = false
+  }
 }
 
 resource "aws_acm_certificate" "certificate" {
