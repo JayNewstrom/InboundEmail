@@ -9,6 +9,7 @@ resource "aws_dynamodb_table" "inbound_email" {
   hash_key       = "emailAddress"
   range_key      = "receivedAt"
   stream_enabled = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
 
   attribute {
     name = "emailAddress"
@@ -75,4 +76,30 @@ module "region_us_west_2" {
   domain_name                            = var.domain_name
   inbound_email_table_name               = aws_dynamodb_table.inbound_email.name
   mx_priority                            = 20
+}
+
+module "api_cloudfront" {
+  source = "../api_cloudfront"
+
+  aws_profile                            = var.aws_profile
+  cloudflare_api_token                   = var.cloudflare_api_token
+  cloudflare_zone                        = var.cloudflare_zone
+  cloudfront_price_class                 = var.cloudfront_price_class
+  dns_allow_overwrite_records            = var.dns_allow_overwrite_records
+  dns_ttl                                = var.dns_ttl
+  dns_validation_allow_overwrite_records = var.dns_validation_allow_overwrite_records
+  dns_validation_ttl                     = var.dns_validation_ttl
+  domain_name                            = "api.${var.domain_name}"
+
+  upstream_domains = [
+    {
+      url  = module.region_us_east_1.api_url
+      name = "api-us-east-1",
+      path = module.region_us_east_1.api_stage_path
+    }, {
+      url  = module.region_us_west_2.api_url
+      name = "api-us-west-2",
+      path = module.region_us_west_2.api_stage_path
+    }
+  ]
 }
