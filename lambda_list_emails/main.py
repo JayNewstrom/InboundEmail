@@ -20,6 +20,8 @@ def lambda_handler(event, context):
         start_key = response.get('LastEvaluatedKey', None)
         done = start_key is None
 
+    result.sort(key=lambda x: x['receivedAt'], reverse=True)
+
     return {
         'statusCode': 200,
         'headers': {
