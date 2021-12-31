@@ -132,3 +132,36 @@ module "front_end_cloudfront" {
     }
   ]
 }
+
+module "inbound_email_sync_s3_from_east" {
+  source = "../sync_s3"
+
+  aws_region = "us-east-1"
+  aws_profile = var.aws_profile
+  name = "InboundEmailFromEast"
+  from_bucket_name = module.region_us_east_1.inbound_email_bucket_name
+  from_bucket_arn = module.region_us_east_1.inbound_email_bucket_arn
+  to_bucket_arns = [module.region_us_west_2.inbound_email_bucket_arn]
+}
+
+module "inbound_email_sync_s3_from_west" {
+  source = "../sync_s3"
+
+  aws_region = "us-west-2"
+  aws_profile = var.aws_profile
+  name = "InboundEmailFromWest"
+  from_bucket_name = module.region_us_west_2.inbound_email_bucket_name
+  from_bucket_arn = module.region_us_west_2.inbound_email_bucket_arn
+  to_bucket_arns = [module.region_us_east_1.inbound_email_bucket_arn]
+}
+
+module "front_end_sync_s3_from_east" {
+  source = "../sync_s3"
+
+  aws_region = "us-east-1"
+  aws_profile = var.aws_profile
+  name = "FrontEndFromEast"
+  from_bucket_name = module.region_us_east_1.front_end_bucket_name
+  from_bucket_arn = module.region_us_east_1.front_end_bucket_arn
+  to_bucket_arns = [module.region_us_west_2.front_end_bucket_arn]
+}
