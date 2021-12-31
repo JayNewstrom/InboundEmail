@@ -26,7 +26,6 @@ resource "aws_dynamodb_table" "inbound_email" {
     type = "S"
   }
 
-  #  TODO: Consider swapping with primary index, so that body can be removed from projection?
   global_secondary_index {
     name            = "MessageIdIndex"
     hash_key        = "messageId"
