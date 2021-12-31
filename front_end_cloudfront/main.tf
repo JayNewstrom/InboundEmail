@@ -84,8 +84,38 @@ resource "aws_cloudfront_distribution" "api" {
     compress = true
 
     viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
+    min_ttl                = 60
     default_ttl            = 86400
+    max_ttl                = 31536000
+  }
+
+  ordered_cache_behavior {
+    path_pattern     = "/static/*"
+    allowed_methods = [
+      "GET",
+      "HEAD",
+    ]
+
+    cached_methods = [
+      "GET",
+      "HEAD",
+    ]
+
+    target_origin_id = "front_end"
+
+    forwarded_values {
+      query_string = false
+
+      cookies {
+        forward = "none"
+      }
+    }
+
+    compress = true
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 604800
+    default_ttl            = 604800
     max_ttl                = 31536000
   }
 
