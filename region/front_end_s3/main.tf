@@ -1,8 +1,3 @@
-provider "aws" {
-  region  = var.aws_region
-  profile = var.aws_profile
-}
-
 data "aws_iam_policy_document" "bucket_policy" {
   statement {
     sid = "1"

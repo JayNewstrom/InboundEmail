@@ -71,19 +71,17 @@ resource "aws_iam_role_policy_attachment" "replication" {
 }
 
 resource "aws_s3_bucket_replication_configuration" "replication" {
+  count  = length(var.to_bucket_arns)
   role   = aws_iam_role.replication.arn
   bucket = var.from_bucket_name
 
-  dynamic "rule" {
-    for_each = var.to_bucket_arns
-    content {
-      id       = "Replication-to-${rule.value}"
-      priority = rule.key
-      status   = "Enabled"
+  rule {
+    id       = "Replication-to-${element(var.to_bucket_arns, count.index)}"
+    priority = count.index
+    status   = "Enabled"
 
-      destination {
-        bucket = rule.value
-      }
+    destination {
+      bucket = element(var.to_bucket_arns, count.index)
     }
   }
 }

@@ -36,3 +36,7 @@ variable "mx_priority" {
 
 variable "front_end_aws_cloudfront_origin_access_identity_iam_arn" {
 }
+variable "supports_inbound_email" {
+  type = bool
+  default = true
+}

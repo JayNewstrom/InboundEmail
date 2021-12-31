@@ -1,8 +1,3 @@
-variable "aws_region" {
-}
-variable "aws_profile" {
-}
-
 variable "cloudflare_zone" {
 }
 variable "cloudflare_api_token" {

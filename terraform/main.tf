@@ -132,18 +132,18 @@ module "front_end_cloudfront" {
   ]
 }
 
-module "inbound_email_sync_s3_from_east" {
+module "inbound_email_sync_s3_from_east_1" {
   source = "../sync_s3"
 
   aws_region = "us-east-1"
   aws_profile = var.aws_profile
-  name = "InboundEmailFromEast"
+  name = "InboundEmailFromEast1"
   from_bucket_name = module.region_us_east_1.inbound_email_bucket_name
   from_bucket_arn = module.region_us_east_1.inbound_email_bucket_arn
   to_bucket_arns = [module.region_us_west_2.inbound_email_bucket_arn]
 }
 
-module "inbound_email_sync_s3_from_west" {
+module "inbound_email_sync_s3_from_west_2" {
   source = "../sync_s3"
 
   aws_region = "us-west-2"

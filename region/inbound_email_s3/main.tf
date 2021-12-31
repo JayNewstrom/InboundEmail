@@ -2,11 +2,6 @@ locals {
   aws_account_id = data.aws_caller_identity.current.account_id
 }
 
-provider "aws" {
-  region  = var.aws_region
-  profile = var.aws_profile
-}
-
 data "aws_caller_identity" "current" {}
 
 resource "aws_s3_bucket" "inbound_email" {

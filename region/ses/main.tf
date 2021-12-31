@@ -7,15 +7,6 @@ terraform {
   }
 }
 
-provider "aws" {
-  region  = var.aws_region
-  profile = var.aws_profile
-}
-
-provider "cloudflare" {
-  api_token = var.cloudflare_api_token
-}
-
 resource "aws_ses_domain_identity" "inbound_email" {
   domain = var.domain_name
 }

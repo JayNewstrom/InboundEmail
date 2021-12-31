@@ -1,6 +1,19 @@
+terraform {
+  required_providers {
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 3.0"
+    }
+  }
+}
+
 provider "aws" {
   region  = var.aws_region
   profile = var.aws_profile
+}
+
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token
 }
 
 locals {
@@ -11,10 +24,8 @@ locals {
 data "aws_caller_identity" "current" {}
 
 module "inbound_email_s3" {
-  source = "../inbound_email_s3"
+  source = "./inbound_email_s3"
 
-  aws_profile = var.aws_profile
-  aws_region  = var.aws_region
   bucket_name = "${var.domain_name}.${var.aws_region}"
 }
 
@@ -30,13 +41,12 @@ module "lambda_ses_inbound" {
 }
 
 module "ses" {
-  source = "../ses"
+  count  = var.supports_inbound_email ? 1 : 0
+  source = "./ses"
 
-  aws_profile          = var.aws_profile
-  aws_region           = var.aws_region
-  bucket_name          = module.inbound_email_s3.bucket_name
-  cloudflare_api_token = var.cloudflare_api_token
-  cloudflare_zone      = var.cloudflare_zone
+  aws_region      = var.aws_region
+  bucket_name     = module.inbound_email_s3.bucket_name
+  cloudflare_zone = var.cloudflare_zone
 
   dns_mx_allow_overwrite_records         = var.dns_mx_allow_overwrite_records
   dns_mx_ttl                             = var.dns_mx_ttl
@@ -59,10 +69,7 @@ module "lambda_list_emails" {
 }
 
 module "api_gateway" {
-  source = "../api_gateway"
-
-  aws_profile = var.aws_profile
-  aws_region  = var.aws_region
+  source = "./api_gateway"
 
   domain_name = "${var.aws_region}.api.${var.domain_name}"
 
@@ -76,11 +83,9 @@ module "api_gateway" {
 }
 
 module "front_end_s3" {
-  source = "../front_end_s3"
+  source = "./front_end_s3"
 
   aws_cloudfront_origin_access_identity_iam_arn = var.front_end_aws_cloudfront_origin_access_identity_iam_arn
 
-  aws_profile = var.aws_profile
-  aws_region  = var.aws_region
   bucket_name = "front-end.${var.domain_name}.${var.aws_region}"
 }
