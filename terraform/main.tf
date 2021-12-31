@@ -36,6 +36,10 @@ resource "aws_dynamodb_table" "inbound_email" {
     region_name = "us-west-2"
   }
 
+  replica {
+    region_name = "us-east-2"
+  }
+
   server_side_encryption {
     enabled = true
   }
@@ -81,6 +85,27 @@ module "region_us_west_2" {
   front_end_aws_cloudfront_origin_access_identity_iam_arn = module.front_end_cloudfront.aws_cloudfront_origin_access_identity_iam_arn
 }
 
+module "region_us_east_2" {
+  source = "../region"
+
+  aws_region  = "us-east-2"
+  mx_priority = -1
+  supports_inbound_email = false
+
+  aws_profile                            = var.aws_profile
+  cloudflare_api_token                   = var.cloudflare_api_token
+  cloudflare_zone                        = var.cloudflare_zone
+  dns_mx_allow_overwrite_records         = var.dns_mx_allow_overwrite_records
+  dns_mx_ttl                             = var.dns_mx_ttl
+  dns_ttl                                = var.dns_ttl
+  dns_validation_allow_overwrite_records = var.dns_validation_allow_overwrite_records
+  dns_validation_ttl                     = var.dns_validation_ttl
+  domain_name                            = var.domain_name
+  inbound_email_table_name               = aws_dynamodb_table.inbound_email.name
+
+  front_end_aws_cloudfront_origin_access_identity_iam_arn = module.front_end_cloudfront.aws_cloudfront_origin_access_identity_iam_arn
+}
+
 module "api_cloudfront" {
   source = "../api_cloudfront"
 
@@ -103,6 +128,10 @@ module "api_cloudfront" {
       url  = module.region_us_west_2.api_url
       name = "api-us-west-2",
       path = module.region_us_west_2.api_stage_path
+    }, {
+      url  = module.region_us_east_2.api_url
+      name = "api-us-east-2",
+      path = module.region_us_east_2.api_stage_path
     }
   ]
 }
@@ -128,6 +157,10 @@ module "front_end_cloudfront" {
     {
       url  = module.region_us_west_2.front_end_bucket_url,
       name = "s3-us-west-2"
+    },
+    {
+      url  = module.region_us_east_2.front_end_bucket_url,
+      name = "s3-us-east-2"
     }
   ]
 }
@@ -140,7 +173,7 @@ module "inbound_email_sync_s3_from_east_1" {
   name = "InboundEmailFromEast1"
   from_bucket_name = module.region_us_east_1.inbound_email_bucket_name
   from_bucket_arn = module.region_us_east_1.inbound_email_bucket_arn
-  to_bucket_arns = [module.region_us_west_2.inbound_email_bucket_arn]
+  to_bucket_arns = [module.region_us_west_2.inbound_email_bucket_arn, module.region_us_east_2.inbound_email_bucket_arn]
 }
 
 module "inbound_email_sync_s3_from_west_2" {
@@ -151,7 +184,18 @@ module "inbound_email_sync_s3_from_west_2" {
   name = "InboundEmailFromWest"
   from_bucket_name = module.region_us_west_2.inbound_email_bucket_name
   from_bucket_arn = module.region_us_west_2.inbound_email_bucket_arn
-  to_bucket_arns = [module.region_us_east_1.inbound_email_bucket_arn]
+  to_bucket_arns = [module.region_us_east_1.inbound_email_bucket_arn, module.region_us_east_2.inbound_email_bucket_arn]
+}
+
+module "inbound_email_sync_s3_from_east_2" {
+  source = "../sync_s3"
+
+  aws_region = "us-east-2"
+  aws_profile = var.aws_profile
+  name = "InboundEmailFromEast2"
+  from_bucket_name = module.region_us_east_2.inbound_email_bucket_name
+  from_bucket_arn = module.region_us_east_2.inbound_email_bucket_arn
+  to_bucket_arns = [module.region_us_east_1.inbound_email_bucket_arn, module.region_us_west_2.inbound_email_bucket_arn]
 }
 
 module "front_end_sync_s3_from_east" {
@@ -162,5 +206,5 @@ module "front_end_sync_s3_from_east" {
   name = "FrontEndFromEast"
   from_bucket_name = module.region_us_east_1.front_end_bucket_name
   from_bucket_arn = module.region_us_east_1.front_end_bucket_arn
-  to_bucket_arns = [module.region_us_west_2.front_end_bucket_arn]
+  to_bucket_arns = [module.region_us_west_2.front_end_bucket_arn, module.region_us_east_2.inbound_email_bucket_arn]
 }
