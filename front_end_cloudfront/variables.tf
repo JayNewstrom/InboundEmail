@@ -2,6 +2,7 @@ variable "upstream_s3_buckets" {
   type = list(object({
     url  = string
     name = string
+    arn  = string
   }))
 }
 
@@ -30,4 +31,6 @@ variable "dns_validation_allow_overwrite_records" {
 }
 
 variable "dns_allow_overwrite_records" {
+}
+variable "github_oidc_repository_slug" {
 }

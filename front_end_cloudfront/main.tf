@@ -26,7 +26,7 @@ locals {
   )
 }
 
-resource "aws_cloudfront_distribution" "api" {
+resource "aws_cloudfront_distribution" "front_end" {
   origin_group {
     origin_id = "front_end"
 
@@ -182,7 +182,7 @@ resource "cloudflare_record" "domain_record" {
   zone_id = var.cloudflare_zone
   name    = var.domain_name
   type    = "CNAME"
-  value   = aws_cloudfront_distribution.api.domain_name
+  value   = aws_cloudfront_distribution.front_end.domain_name
   ttl     = var.dns_ttl
   proxied = false
 
@@ -191,4 +191,66 @@ resource "cloudflare_record" "domain_record" {
 
 resource "aws_cloudfront_origin_access_identity" "origin_access_identity" {
   comment = "access-identity-${var.domain_name}.s3.amazonaws.com"
+}
+
+
+resource "aws_iam_openid_connect_provider" "github_actions" {
+  url = "https://token.actions.githubusercontent.com"
+
+  client_id_list = [
+    "sts.amazonaws.com",
+  ]
+
+  thumbprint_list = ["a031c46782e6e6c662c2c87c76da9aa62ccabd8e"]
+}
+
+resource "aws_iam_role" "github_actions" {
+  name = "FrontEndPublishGithubActions"
+
+  assume_role_policy  = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [
+      {
+        Action    = "sts:AssumeRoleWithWebIdentity"
+        Effect    = "Allow"
+        Sid       = ""
+        Principal = {
+          Federated = aws_iam_openid_connect_provider.github_actions.arn
+        }
+        Condition = {
+          StringLike = {
+            "token.actions.githubusercontent.com:sub" = var.github_oidc_repository_slug
+          }
+        }
+      },
+    ]
+  })
+  managed_policy_arns = [aws_iam_policy.publisher.arn]
+}
+
+resource "aws_iam_policy" "publisher" {
+  name = "FrontEndPublishGithubActions"
+
+  policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [
+      {
+        Action   = [
+          "s3:PutObject",
+          "s3:ListBucket",
+          "s3:DeleteObject"
+        ]
+        Effect   = "Allow"
+        Resource = [
+          var.upstream_s3_buckets[0].arn,
+          format("%s/*", var.upstream_s3_buckets[0].arn),
+        ]
+      },
+      {
+        Action   = "cloudfront:CreateInvalidation"
+        Effect   = "Allow"
+        Resource = aws_cloudfront_distribution.front_end.arn
+      },
+    ]
+  })
 }

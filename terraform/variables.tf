@@ -39,3 +39,5 @@ variable "cloudfront_price_class" {
 variable "dns_allow_overwrite_records" {
   default = true
 }
+variable "github_oidc_repository_slug" {
+}

@@ -119,15 +119,18 @@ module "front_end_cloudfront" {
   dns_validation_allow_overwrite_records = var.dns_validation_allow_overwrite_records
   dns_validation_ttl                     = var.dns_validation_ttl
   domain_name                            = var.domain_name
+  github_oidc_repository_slug            = var.github_oidc_repository_slug
 
   upstream_s3_buckets = [
     {
       url  = module.region_us_east_1.front_end_bucket_url,
-      name = "s3-us-east-1"
+      name = "s3-us-east-1",
+      arn = module.region_us_east_1.front_end_bucket_arn,
     },
     {
       url  = module.region_us_west_2.front_end_bucket_url,
-      name = "s3-us-west-2"
+      name = "s3-us-west-2",
+      arn = module.region_us_west_2.front_end_bucket_arn,
     }
   ]
 }
