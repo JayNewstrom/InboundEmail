@@ -1,6 +1,6 @@
 locals {
   inbound_email_lambda_name = "SesInbound"
-  aws_account_id = data.aws_caller_identity.current.account_id
+  aws_account_id            = data.aws_caller_identity.current.account_id
 }
 
 provider "aws" {
@@ -88,6 +88,9 @@ resource "aws_lambda_function" "ses_inbound" {
   filename         = data.archive_file.lambda_ses_inbound.output_path
   source_code_hash = data.archive_file.lambda_ses_inbound.output_base64sha256
   publish          = true
+  memory_size      = 512
+  timeout          = 10
+
   environment {
     variables = {
       INCOMING_EMAIL_BUCKET = var.s3_bucket_name

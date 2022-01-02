@@ -1,6 +1,6 @@
 locals {
   list_emails_lambda_name = "ListEmails"
-  aws_account_id = data.aws_caller_identity.current.account_id
+  aws_account_id          = data.aws_caller_identity.current.account_id
 }
 
 provider "aws" {
@@ -75,6 +75,7 @@ resource "aws_lambda_function" "list_emails" {
   source_code_hash = data.archive_file.lambda_list_emails.output_base64sha256
   publish          = true
   memory_size      = 512
+  timeout          = 10
 
   environment {
     variables = {
