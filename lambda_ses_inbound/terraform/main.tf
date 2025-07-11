@@ -84,7 +84,7 @@ resource "aws_lambda_function" "ses_inbound" {
   function_name    = local.inbound_email_lambda_name
   role             = aws_iam_role.lambda_ses_inbound.arn
   handler          = "main.lambda_handler"
-  runtime          = "python3.9"
+  runtime          = "python3.13"
   filename         = data.archive_file.lambda_ses_inbound.output_path
   source_code_hash = data.archive_file.lambda_ses_inbound.output_base64sha256
   publish          = true
