@@ -70,7 +70,7 @@ resource "aws_lambda_function" "list_emails" {
   function_name    = local.list_emails_lambda_name
   role             = aws_iam_role.lambda_list_emails.arn
   handler          = "main.lambda_handler"
-  runtime          = "python3.9"
+  runtime          = "python3.13"
   filename         = data.archive_file.lambda_list_emails.output_path
   source_code_hash = data.archive_file.lambda_list_emails.output_base64sha256
   publish          = true
